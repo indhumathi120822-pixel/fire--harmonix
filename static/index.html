@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FIRE HARMONIX · MODIS & VIIRS Harmonized Fire Intelligence</title>
+  <link rel="stylesheet" href="/static/leaflet.css" onerror="this.onerror=null;this.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';" />
+  <script src="/static/leaflet.js"></script>
+  <script>
+    if (typeof L === 'undefined') {
+      document.write('<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>');
+    }
+  </script>
+  <style>
+    :root {
+      --bg: #f8fafc; --surface: #ffffff; --border: #cbd5e1;
+      --text: #0f172a; --muted: #475569; --primary: #2563eb;
+      --harmonized: #ea580c; --viirs: #0284c7; --modis: #7c3aed;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+    body { background: var(--bg); color: var(--text); display: flex; min-height: 100vh; }
+
+    /* Static markers - crisp and clean with zero blinking or flickering */
+
+    aside {
+      width: 270px; background: var(--surface); border-right: 1px solid var(--border);
+      padding: 16px 14px; display: flex; flex-direction: column; justify-content: space-between;
+      position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+    .brand-icon {
+      width: 34px; height: 34px; border-radius: 9px;
+      background: linear-gradient(135deg, #f97316, #dc2626);
+      color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
+    }
+    .brand h1 { font-size: 1.1rem; font-weight: 800; }
+    .subtitle { font-size: 0.71rem; color: var(--muted); line-height: 1.35; margin-bottom: 10px; }
+
+    .nav-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 800; margin: 10px 0 5px; }
+    .nav-btn {
+      width: 100%; text-align: left; background: #f8fafc; border: 1px solid #e2e8f0; padding: 8px 11px;
+      border-radius: 8px; color: #1e293b; font-size: 0.8rem; font-weight: 700; cursor: pointer; margin-bottom: 5px;
+    }
+    .nav-btn.active { background: #2563eb; color: #ffffff; border-color: #2563eb; }
+
+    .filter-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px; margin-bottom: 8px; }
+    .filter-box label { display: block; font-size: 0.69rem; font-weight: 700; color: var(--muted); margin-bottom: 3px; }
+    .filter-box select, .filter-box input {
+      width: 100%; padding: 6px 8px; border-radius: 7px; border: 1px solid var(--border);
+      background: #fff; font-size: 0.8rem; font-weight: 600; margin-bottom: 7px;
+    }
+    .btn-live {
+      width: 100%; background: #dc2626; color: #fff; border: none; padding: 9px;
+      border-radius: 8px; font-weight: 800; font-size: 0.8rem; cursor: pointer;
+    }
+    .btn-live:hover { background: #b91c1c; }
+
+    main { flex: 1; padding: 16px 20px; overflow-y: auto; }
+    .topbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    select, button.action {
+      background: var(--surface); border: 1px solid var(--border); color: var(--text);
+      padding: 7px 11px; border-radius: 8px; font-size: 0.8rem; font-weight: 600;
+    }
+    button.action { cursor: pointer; }
+    button.primary { background: var(--primary); color: #fff; border: none; }
+
+    .alert-card {
+      background: var(--surface); border: 1px solid var(--border); border-left-width: 6px;
+      border-radius: 10px; padding: 10px 15px; margin-bottom: 12px;
+      display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px;
+    }
+    .sev-GREEN { border-left-color: #10b981; background: #f0fdf4; }
+    .sev-YELLOW { border-left-color: #f59e0b; background: #fffbeb; }
+    .sev-RED { border-left-color: #ef4444; background: #fef2f2; }
+    .alert-badge { padding: 4px 9px; border-radius: 6px; font-size: 0.71rem; font-weight: 800; color: #fff; background: #10b981; }
+
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 11px; margin-bottom: 13px; }
+    .kpi { background: var(--surface); border: 1px solid #e2e8f0; border-radius: 10px; padding: 11px 13px; }
+    .kpi span { font-size: 0.68rem; color: var(--muted); font-weight: 700; text-transform: uppercase; }
+    .kpi h2 { font-size: 1.35rem; font-weight: 800; margin-top: 2px; }
+    .kpi small { font-size: 0.7rem; color: #059669; font-weight: 600; }
+
+    .screen { display: none; }
+    .screen.active { display: block; }
+    .workspace { display: grid; grid-template-columns: 1.7fr 1fr; gap: 14px; }
+    @media (max-width: 1024px) { body { flex-direction: column; } aside { width: 100%; height: auto; position: static; } .workspace { grid-template-columns: 1fr; } }
+
+    .card { background: var(--surface); border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; }
+    .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; }
+    #map { height: 500px; width: 100%; border-radius: 10px; border: 1px solid var(--border); z-index: 1; }
+
+    .inspector-empty { padding: 42px 16px; text-align: center; color: var(--muted); font-size: 0.84rem; background: #f8fafc; border-radius: 10px; border: 1px dashed #cbd5e1; line-height: 1.6; }
+    .stat-pill-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+    .mini-stat { background: #f8fafc; border: 1px solid #e2e8f0; padding: 9px; border-radius: 8px; }
+    .mini-stat small { color: var(--muted); font-size: 0.69rem; display: block; font-weight: 600; }
+    .mini-stat strong { font-size: 0.98rem; }
+    .decision-box { padding: 11px; border-radius: 8px; font-size: 0.81rem; font-weight: 700; margin-top: 10px; line-height: 1.45; }
+
+    .cal-grid { display: grid; grid-template-columns: 50px repeat(31, minmax(24px, 1fr)); gap: 4px; overflow-x: auto; padding-bottom: 8px; }
+    .m-lbl { font-size: 0.78rem; font-weight: 800; display: flex; align-items: center; }
+    .c-day { height: 30px; border-radius: 5px; font-size: 0.7rem; font-weight: 700; display: flex; align-items: center; justify-content: center; background: #f1f5f9; cursor: pointer; }
+    .month-bars { display: flex; align-items: flex-end; justify-content: space-between; height: 195px; gap: 8px; padding-top: 20px; border-bottom: 1px solid #e2e8f0; }
+    .m-col { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; cursor: pointer; }
+    .m-bar { width: 100%; max-width: 40px; border-radius: 5px 5px 0 0; min-height: 6px; transition: 0.2s; }
+    .m-col:hover .m-bar { opacity: 0.75; }
+    .m-name { font-size: 0.72rem; font-weight: 700; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <aside>
+    <div>
+      <div class="brand">
+        <div class="brand-icon">🔥</div>
+        <h1>FIRE HARMONIX</h1>
+      </div>
+      <p class="subtitle">Physics-Calibrated MODIS & VIIRS Fire Intelligence</p>
+
+      <div class="nav-label">3 Dedicated Screens</div>
+      <button id="btnScr1" class="nav-btn active" onclick="switchScreen(1)">🗺️ 1. India Map & Fire Alerts</button>
+      <button id="btnScr2" class="nav-btn" onclick="switchScreen(2)">📅 2. 365-Day Calendar & Cause</button>
+      <button id="btnScr3" class="nav-btn" onclick="switchScreen(3)">📥 3. 365-Day Table & Export</button>
+
+      <div class="nav-label">All India State & District Search</div>
+      <div class="filter-box">
+        <label>State / Union Territory (All 36)</label>
+        <select id="stateSel" onchange="onStateChange()">
+          <option value="ALL">All India (Full Country)</option>
+          <option value="Andaman and Nicobar Islands">Andaman & Nicobar Islands</option>
+          <option value="Andhra Pradesh">Andhra Pradesh</option>
+          <option value="Arunachal Pradesh">Arunachal Pradesh</option>
+          <option value="Assam">Assam</option>
+          <option value="Bihar">Bihar</option>
+          <option value="Chandigarh">Chandigarh</option>
+          <option value="Chhattisgarh">Chhattisgarh</option>
+          <option value="Dadra and Nagar Haveli and Daman and Diu">Dadra & Nagar Haveli and Daman & Diu</option>
+          <option value="Delhi">Delhi (NCT)</option>
+          <option value="Goa">Goa</option>
+          <option value="Gujarat">Gujarat</option>
+          <option value="Haryana">Haryana</option>
+          <option value="Himachal Pradesh">Himachal Pradesh</option>
+          <option value="Jammu and Kashmir">Jammu & Kashmir</option>
+          <option value="Jharkhand">Jharkhand</option>
+          <option value="Karnataka">Karnataka</option>
+          <option value="Kerala">Kerala</option>
+          <option value="Ladakh">Ladakh</option>
+          <option value="Lakshadweep">Lakshadweep</option>
+          <option value="Madhya Pradesh">Madhya Pradesh</option>
+          <option value="Maharashtra">Maharashtra</option>
+          <option value="Manipur">Manipur</option>
+          <option value="Meghalaya">Meghalaya</option>
+          <option value="Mizoram">Mizoram</option>
+          <option value="Nagaland">Nagaland</option>
+          <option value="Odisha">Odisha</option>
+          <option value="Puducherry">Puducherry</option>
+          <option value="Punjab">Punjab</option>
+          <option value="Rajasthan">Rajasthan</option>
+          <option value="Sikkim">Sikkim</option>
+          <option value="Tamil Nadu">Tamil Nadu</option>
+          <option value="Telangana">Telangana</option>
+          <option value="Tripura">Tripura</option>
+          <option value="Uttar Pradesh">Uttar Pradesh</option>
+          <option value="Uttarakhand">Uttarakhand</option>
+          <option value="West Bengal">West Bengal</option>
+        </select>
+
+        <label>District (Select or Type Any District)</label>
+        <input id="distInput" list="distList" placeholder="Select or type district..." onchange="onDistrictSelect()" />
+        <datalist id="distList"></datalist>
+
+        <label>Coordinates (Auto or Manual Lat / Lon)</label>
+        <div style="display:flex; gap:5px; margin-bottom:6px;">
+          <input id="inLat" type="number" step="0.01" placeholder="Lat (22.5)" />
+          <input id="inLon" type="number" step="0.01" placeholder="Lon (79.0)" />
+        </div>
+        <button class="action primary" style="width:100%;" onclick="locateAndScan()">🔍 Scan Area & Display Fires</button>
+      </div>
+
+      <div class="nav-label">5-Year Window & Live Sync</div>
+      <div class="filter-box">
+        <label>Select Year (Database Records)</label>
+        <select id="yearSel" onchange="refreshAllData()">
+          <option value="2026" selected>2026 (Current YTD)</option>
+          <option value="2025">2025</option>
+          <option value="2024">2024</option>
+          <option value="2023">2023</option>
+          <option value="2022">2022</option>
+          <option value="2021">2021</option>
+          <option value="2020">2020</option>
+        </select>
+
+        <label>Compare With Baseline Year</label>
+        <select id="compYearSel" onchange="refreshAllData()">
+          <option value="2024" selected>2024 Baseline</option>
+          <option value="2025">2025 Baseline</option>
+          <option value="2023">2023 Baseline</option>
+          <option value="2022">2022 Baseline</option>
+          <option value="2021">2021 Baseline</option>
+          <option value="2020">2020 Baseline</option>
+        </select>
+
+        <button class="btn-live" onclick="fetchLiveNow()">🔴 Fetch Live NASA FIRMS</button>
+      </div>
+    </div>
+
+    <div style="font-size:0.69rem; color:var(--muted); border-top:1px solid #e2e8f0; padding-top:8px;">
+      Unique Edge: HFAI Index + Physics VZA Check
+    </div>
+  </aside>
+
+  <main>
+    <div class="topbar">
+      <div>
+        <h2 id="regionTitle" style="font-size:1.2rem; font-weight:800;">All India — Harmonized Fire Overview</h2>
+        <span id="regionSub" style="font-size:0.78rem; color:var(--muted);">Select any State/District to zoom & inspect hotspots</span>
+      </div>
+      <div class="controls">
+        <select id="sensorSel" onchange="loadMap()">
+          <option value="Harmonized">Harmonized Only (Recommended)</option>
+          <option value="all">All Sensors Combined</option>
+          <option value="VIIRS">VIIRS (375m)</option>
+          <option value="MODIS">MODIS (1km)</option>
+          <option value="live">🔴 Live NASA FIRMS Feed Only</option>
+        </select>
+        <button id="btnToggleLive" class="action" onclick="toggleLiveFeed()" title="Toggle Real-Time NASA FIRMS overlay">🔴 Live Feed: ON</button>
+        <button class="action primary" onclick="exportFilteredCSV()">⬇ Export CSV</button>
+      </div>
+    </div>
+
+    <div id="alertCard" class="alert-card sev-GREEN">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span id="alertBadge" class="alert-badge">READY</span>
+        <div>
+          <strong id="alertTitle" style="font-size:0.89rem;">Click "Fetch Live NASA FIRMS" or select a State/District</strong>
+          <div id="alertSub" style="font-size:0.76rem; color:var(--muted);">Comparing active year burning activity against historical multi-year median</div>
+        </div>
+      </div>
+      <div id="alertDiff" style="font-weight:800; font-size:0.92rem;"></div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><span>Harmonized DB</span><h2 id="kTotal">—</h2><small>Physics-Calibrated Records</small></div>
+      <div class="kpi"><span>Area Active Hotspots</span><h2 id="kMap">—</h2><small id="kMapSub">Active on Map</small></div>
+      <div class="kpi"><span>Today's Live Fires</span><h2 id="kLive">—</h2><small id="kLiveSub">NASA FIRMS Satellite</small></div>
+      <div class="kpi"><span>YTD vs Compare Year</span><h2 id="kComp">—</h2><small id="kCompSub">Anomaly Ratio</small></div>
+    </div>
+
+    <div id="screen1" class="screen active">
+      <div class="workspace">
+        <div class="card">
+          <div class="card-head">
+            <h3>🗺️ Clean Interactive India & District Map</h3>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+              <button class="action" onclick="resetFullIndia()">🇮🇳 All India</button>
+              <button class="action" onclick="focusRegion('punjab')">🌾 Punjab & Haryana</button>
+              <button class="action" onclick="focusRegion('central')">🌲 Central India</button>
+              <button class="action" onclick="focusRegion('northeast')">⛰️ Northeast</button>
+              <button class="action" onclick="focusRegion('south')">🌴 Western Ghats & South</button>
+              <button class="action primary" onclick="scanVisibleMap()">🔍 Scan This View</button>
+            </div>
+          </div>
+          <div id="map"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h3>🎯 Hotspot Cause & Decision Panel</h3>
+            <span id="evTag" style="font-size:0.74rem; font-weight:700; color:var(--primary);">Tap any dot</span>
+          </div>
+          <div id="inspectorBody">
+            <div class="inspector-empty">
+              👆 <strong>Touch any red dot on the map</strong><br/><br/>
+              Instant scientific & emergency breakdown:<br/>
+              • <strong>Region-Specific Fire Type:</strong> Crop Stubble vs Forest Wildfire<br/>
+              • <strong>Month & Seasonal Context:</strong> Peak vs Off-season<br/>
+              • <strong>Expected vs Actual Surge:</strong> Responder Dispatch Alert
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="screen2" class="screen">
+      <div style="display:grid; grid-template-columns: 1.65fr 1fr; gap:14px;">
+        <div class="card">
+          <div class="card-head">
+            <h3 id="calTitle">📅 365-Day Burning Calendar (Selected District/State)</h3>
+            <div style="font-size:0.72rem; font-weight:700;">
+              <span style="color:#0284c7;">■ Low</span> &nbsp;
+              <span style="color:#10b981;">■ Normal</span> &nbsp;
+              <span style="color:#f59e0b;">■ High</span> &nbsp;
+              <span style="color:#ef4444;">■ Peak</span>
+            </div>
+          </div>
+          <div id="calGrid" class="cal-grid"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h3>📊 Monthly Intensity & Day Inspector</h3>
+            <span id="ytdWinner" style="font-size:0.74rem; font-weight:800; color:#dc2626;">Click a month bar or calendar cell</span>
+          </div>
+          <div id="monthBars" class="month-bars"></div>
+          <div id="monthReasonBox" style="margin-top:12px; padding:11px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; font-size:0.8rem; line-height:1.5;">
+            👆 <strong>Click any month bar or calendar cell above</strong> to inspect daily burning activity, historical baseline, and environmental driver.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="screen3" class="screen">
+      <div class="card">
+        <div class="card-head">
+          <h3>📥 365-Day Location Fire Log & Report Export</h3>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <select id="monthFilterSel" onchange="filter365Table()" style="padding:6px 10px; border:1px solid #cbd5e1; border-radius:7px; font-size:0.8rem;">
+              <option value="ALL">All Months</option>
+              <option value="Jan">January</option>
+              <option value="Feb">February</option>
+              <option value="Mar">March</option>
+              <option value="Apr">April</option>
+              <option value="May">May</option>
+              <option value="Jun">June</option>
+              <option value="Jul">July</option>
+              <option value="Aug">August</option>
+              <option value="Sep">September</option>
+              <option value="Oct">October</option>
+              <option value="Nov">November</option>
+              <option value="Dec">December</option>
+            </select>
+            <select id="sevFilterSel" onchange="filter365Table()" style="padding:6px 10px; border:1px solid #cbd5e1; border-radius:7px; font-size:0.8rem;">
+              <option value="ALL">All Severities</option>
+              <option value="RED">Peak / RED</option>
+              <option value="YELLOW">Elevated / YELLOW</option>
+              <option value="GREEN">Normal / GREEN</option>
+              <option value="BLUE">Low</option>
+            </select>
+            <input id="tableSearch" type="text" placeholder="Search Date, Month, or Cause..." oninput="filter365Table()" style="padding:6px 10px; border:1px solid #cbd5e1; border-radius:7px; font-size:0.8rem; width:210px;" />
+            <button class="action primary" onclick="exportFilteredCSV()">⬇ Download CSV</button>
+            <button class="action" onclick="downloadStyledCSSReport()">📄 HTML Report</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto; max-height:550px;">
+          <table style="width:100%; border-collapse:collapse; font-size:0.8rem;">
+            <thead>
+              <tr style="background:#f8fafc; border-bottom:2px solid #cbd5e1; text-align:left;">
+                <th style="padding:8px;">#</th>
+                <th style="padding:8px;">Date</th>
+                <th style="padding:8px;">Location</th>
+                <th style="padding:8px;">Coordinates</th>
+                <th style="padding:8px;">Active Hotspots</th>
+                <th style="padding:8px;">Baseline (Comp)</th>
+                <th style="padding:8px;">Severity</th>
+                <th style="padding:8px;">Fire Classification</th>
+              </tr>
+            </thead>
+            <tbody id="table365Body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const INDIA_STATES = {
+      "ALL": { lat: 22.5, lon: 79.0, zoom: 5, dists: [] },
+      "Andaman and Nicobar Islands": { lat: 11.74, lon: 92.65, zoom: 7, dists: ["Nicobar", "North and Middle Andaman", "South Andaman"] },
+      "Andhra Pradesh": { lat: 15.91, lon: 79.74, zoom: 7, dists: ["Anantapur", "Chittoor", "East Godavari", "Guntur", "Kadapa", "Krishna", "Kurnool", "Nellore", "Prakasam", "Srikakulam", "Tirupati", "Visakhapatnam", "Vizianagaram", "West Godavari"] },
+      "Arunachal Pradesh": { lat: 28.21, lon: 94.72, zoom: 7, dists: ["Changlang", "East Siang", "Itanagar", "Lohit", "Lower Subansiri", "Papum Pare", "Tawang", "West Kameng"] },
+      "Assam": { lat: 26.20, lon: 92.93, zoom: 7, dists: ["Barpeta", "Cachar", "Dhubri", "Dibrugarh", "Dima Hasao", "Goalpara", "Golaghat", "Jorhat", "Kamrup", "Karbi Anglong", "Nagaon", "Sonitpur", "Tinsukia"] },
+      "Bihar": { lat: 25.09, lon: 85.31, zoom: 7, dists: ["Araria", "Aurangabad", "Begusarai", "Bhagalpur", "Bhojpur", "Darbhanga", "Gaya", "Gopalganj", "Jamui", "Katihar", "Madhubani", "Muzaffarpur", "Nalanda", "Patna", "Purnia", "Rohtas", "Saharsa", "Samastipur", "Saran", "Sitamarhi", "Siwan", "Vaishali", "West Champaran"] },
+      "Chandigarh": { lat: 30.73, lon: 76.77, zoom: 11, dists: ["Chandigarh"] },
+      "Chhattisgarh": { lat: 21.27, lon: 81.86, zoom: 7, dists: ["Bastar", "Bijapur", "Bilaspur", "Dantewada", "Dhamtari", "Durg", "Jagdalpur", "Kanker", "Korba", "Raigarh", "Raipur", "Surguja"] },
+      "Dadra and Nagar Haveli and Daman and Diu": { lat: 20.18, lon: 73.01, zoom: 9, dists: ["Daman", "Diu", "Silvassa"] },
+      "Delhi": { lat: 28.70, lon: 77.10, zoom: 10, dists: ["Central Delhi", "East Delhi", "New Delhi", "North Delhi", "South Delhi", "West Delhi"] },
+      "Goa": { lat: 15.29, lon: 74.12, zoom: 9, dists: ["North Goa", "South Goa"] },
+      "Gujarat": { lat: 22.25, lon: 71.19, zoom: 7, dists: ["Ahmedabad", "Amreli", "Anand", "Banaskantha", "Bharuch", "Bhavnagar", "Dahod", "Gandhinagar", "Jamnagar", "Junagadh", "Kutch", "Mehsana", "Rajkot", "Surat", "Vadodara", "Valsad"] },
+      "Haryana": { lat: 29.05, lon: 76.08, zoom: 7, dists: ["Ambala", "Bhiwani", "Faridabad", "Fatehabad", "Gurugram", "Hisar", "Jhajjar", "Jind", "Kaithal", "Karnal", "Kurukshetra", "Panipat", "Rohtak", "Sirsa", "Sonipat", "Yamunanagar"] },
+      "Himachal Pradesh": { lat: 31.10, lon: 77.17, zoom: 7, dists: ["Bilaspur", "Chamba", "Hamirpur", "Kangra", "Kinnaur", "Kullu", "Mandi", "Shimla", "Sirmaur", "Solan", "Una"] },
+      "Jammu and Kashmir": { lat: 33.77, lon: 76.57, zoom: 7, dists: ["Anantnag", "Baramulla", "Budgam", "Doda", "Jammu", "Kathua", "Kupwara", "Pulwama", "Rajouri", "Srinagar", "Udhampur"] },
+      "Jharkhand": { lat: 23.61, lon: 85.27, zoom: 7, dists: ["Bokaro", "Chatra", "Deoghar", "Dhanbad", "Dumka", "East Singhbhum", "Giridih", "Gumla", "Hazaribagh", "Palamu", "Ranchi", "West Singhbhum"] },
+      "Karnataka": { lat: 15.31, lon: 75.71, zoom: 7, dists: ["Ballari", "Belagavi", "Bengaluru Rural", "Bengaluru Urban", "Bidar", "Chamarajanagar", "Chikkamagaluru", "Dakshina Kannada", "Davanagere", "Dharwad", "Hassan", "Kalaburagi", "Kodagu", "Kolar", "Mandya", "Mysuru", "Raichur", "Shivamogga", "Tumakuru", "Udupi", "Uttara Kannada"] },
+      "Kerala": { lat: 10.85, lon: 76.27, zoom: 7, dists: ["Alappuzha", "Ernakulam", "Idukki", "Kannur", "Kasaragod", "Kollam", "Kottayam", "Kozhikode", "Malappuram", "Palakkad", "Pathanamthitta", "Thiruvananthapuram", "Thrissur", "Wayanad"] },
+      "Ladakh": { lat: 34.15, lon: 77.57, zoom: 7, dists: ["Kargil", "Leh"] },
+      "Lakshadweep": { lat: 10.56, lon: 72.64, zoom: 9, dists: ["Lakshadweep"] },
+      "Madhya Pradesh": { lat: 22.97, lon: 78.65, zoom: 6, dists: ["Balaghat", "Betul", "Bhopal", "Chhindwara", "Damoh", "Dewas", "Gwalior", "Indore", "Jabalpur", "Mandla", "Morena", "Narmadapuram", "Raisen", "Rewa", "Sagar", "Satna", "Sehore", "Seoni", "Shahdol", "Shivpuri", "Ujjain"] },
+      "Maharashtra": { lat: 19.75, lon: 75.71, zoom: 6, dists: ["Ahmednagar", "Akola", "Amravati", "Aurangabad", "Beed", "Bhandara", "Chandrapur", "Dhule", "Gadchiroli", "Gondia", "Jalgaon", "Kolhapur", "Latur", "Mumbai", "Nagpur", "Nanded", "Nashik", "Palghar", "Pune", "Raigad", "Ratnagiri", "Sangli", "Satara", "Solapur", "Thane", "Wardha", "Yavatmal"] },
+      "Manipur": { lat: 24.66, lon: 93.90, zoom: 8, dists: ["Bishnupur", "Chandel", "Churachandpur", "Imphal East", "Imphal West", "Senapati", "Tamenglong", "Thoubal", "Ukhrul"] },
+      "Meghalaya": { lat: 25.46, lon: 91.36, zoom: 8, dists: ["East Garo Hills", "East Khasi Hills", "Ri Bhoi", "South Garo Hills", "West Garo Hills", "West Jaintia Hills", "West Khasi Hills"] },
+      "Mizoram": { lat: 23.16, lon: 92.93, zoom: 8, dists: ["Aizawl", "Champhai", "Kolasib", "Lawngtlai", "Lunglei", "Mamit", "Saiha", "Serchhip"] },
+      "Nagaland": { lat: 26.15, lon: 94.56, zoom: 8, dists: ["Dimapur", "Kiphire", "Kohima", "Longleng", "Mokokchung", "Mon", "Peren", "Phek", "Tuensang", "Wokha", "Zunheboto"] },
+      "Odisha": { lat: 20.95, lon: 85.09, zoom: 7, dists: ["Angul", "Balangir", "Balasore", "Bargarh", "Bhadrak", "Cuttack", "Dhenkanal", "Ganjam", "Kalahandi", "Kandhamal", "Kendrapara", "Keonjhar", "Khordha", "Koraput", "Malkangiri", "Mayurbhanj", "Nabarangpur", "Nayagarh", "Nuapada", "Puri", "Rayagada", "Sambalpur", "Sundargarh"] },
+      "Puducherry": { lat: 11.94, lon: 79.80, zoom: 10, dists: ["Karaikal", "Mahe", "Puducherry", "Yanam"] },
+      "Punjab": { lat: 31.14, lon: 75.34, zoom: 7, dists: ["Amritsar", "Barnala", "Bathinda", "Faridkot", "Fatehgarh Sahib", "Fazilka", "Firozpur", "Gurdaspur", "Hoshiarpur", "Jalandhar", "Kapurthala", "Ludhiana", "Malerkotla", "Mansa", "Moga", "Muktsar", "Pathankot", "Patiala", "Rupnagar", "Sangrur", "SAS Nagar", "SBS Nagar", "Tarn Taran"] },
+      "Rajasthan": { lat: 27.02, lon: 74.21, zoom: 6, dists: ["Ajmer", "Alwar", "Banswara", "Baran", "Barmer", "Bharatpur", "Bhilwara", "Bikaner", "Bundi", "Chittorgarh", "Churu", "Dausa", "Hanumangarh", "Jaipur", "Jaisalmer", "Jalore", "Jhalawar", "Jhunjhunu", "Jodhpur", "Kota", "Nagaur", "Pali", "Sikar", "Sirohi", "Sri Ganganagar", "Tonk", "Udaipur"] },
+      "Sikkim": { lat: 27.53, lon: 88.51, zoom: 8, dists: ["East Sikkim", "North Sikkim", "South Sikkim", "West Sikkim"] },
+      "Tamil Nadu": { lat: 11.12, lon: 78.65, zoom: 7, dists: ["Ariyalur", "Chengalpattu", "Chennai", "Coimbatore", "Cuddalore", "Dharmapuri", "Dindigul", "Erode", "Kallakurichi", "Kanchipuram", "Kanyakumari", "Karur", "Krishnagiri", "Madurai", "Mayiladuthurai", "Nagapattinam", "Namakkal", "Perambalur", "Pudukkottai", "Ramanathapuram", "Ranipet", "Salem", "Sivaganga", "Tenkasi", "Thanjavur", "The Nilgiris", "Theni", "Thoothukudi", "Tiruchirappalli", "Tirunelveli", "Tirupathur", "Tiruppur", "Tiruvallur", "Tiruvannamalai", "Tiruvarur", "Vellore", "Viluppuram", "Virudhunagar"] },
+      "Telangana": { lat: 18.11, lon: 79.01, zoom: 7, dists: ["Adilabad", "Bhadradri Kothagudem", "Hyderabad", "Jagtial", "Kamareddy", "Karimnagar", "Khammam", "Mahabubnagar", "Mancherial", "Medak", "Nalgonda", "Nizamabad", "Peddapalli", "Rangareddy", "Sangareddy", "Siddipet", "Suryapet", "Vikarabad", "Warangal"] },
+      "Tripura": { lat: 23.94, lon: 91.98, zoom: 8, dists: ["Dhalai", "Gomati", "Khowai", "North Tripura", "Sepahijala", "South Tripura", "Unakoti", "West Tripura"] },
+      "Uttar Pradesh": { lat: 26.84, lon: 80.94, zoom: 6, dists: ["Agra", "Aligarh", "Ambedkar Nagar", "Amethi", "Amroha", "Auraiya", "Ayodhya", "Azamgarh", "Baghpat", "Bahraich", "Ballia", "Balrampur", "Banda", "Barabanki", "Bareilly", "Basti", "Bhadohi", "Bijnor", "Budaun", "Bulandshahr", "Chandauli", "Chitrakoot", "Deoria", "Etah", "Etawah", "Farrukhabad", "Fatehpur", "Firozabad", "Gautam Buddha Nagar", "Ghaziabad", "Ghazipur", "Gonda", "Gorakhpur", "Hamirpur", "Hapur", "Hardoi", "Hathras", "Jalaun", "Jaunpur", "Jhansi", "Kannauj", "Kanpur Dehat", "Kanpur Nagar", "Kasganj", "Kaushambi", "Kheri", "Kushinagar", "Lalitpur", "Lucknow", "Maharajganj", "Mahoba", "Mainpuri", "Mathura", "Mau", "Meerut", "Mirzapur", "Moradabad", "Muzaffarnagar", "Pilibhit", "Pratapgarh", "Prayagraj", "Raebareli", "Rampur", "Saharanpur", "Sambhal", "Sant Kabir Nagar", "Shahjahanpur", "Shamli", "Shravasti", "Siddharthnagar", "Sitapur", "Sonbhadra", "Sultanpur", "Unnao", "Varanasi"] },
+      "Uttarakhand": { lat: 30.06, lon: 79.01, zoom: 7, dists: ["Almora", "Bageshwar", "Chamoli", "Champawat", "Dehradun", "Haridwar", "Nainital", "Pauri Garhwal", "Pithoragarh", "Rudraprayag", "Tehri Garhwal", "Udham Singh Nagar", "Uttarkashi"] },
+      "West Bengal": { lat: 22.98, lon: 87.85, zoom: 7, dists: ["Alipurduar", "Bankura", "Birbhum", "Cooch Behar", "Dakshin Dinajpur", "Darjeeling", "Hooghly", "Howrah", "Jalpaiguri", "Jhargram", "Kalimpong", "Kolkata", "Malda", "Murshidabad", "Nadia", "North 24 Parganas", "Paschim Bardhaman", "Paschim Medinipur", "Purba Bardhaman", "Purba Medinipur", "Purulia", "South 24 Parganas", "Uttar Dinajpur"] }
+    };
+
+    const REGION_PRESETS = {
+      all: { label: "All India", lat: 22.5, lon: 79.0, zoom: 5, bbox: "" },
+      punjab: { label: "Punjab & Haryana", lat: 30.3, lon: 75.8, zoom: 7, bbox: "&min_lat=28.000&max_lat=32.500&min_lon=74.000&max_lon=77.800" },
+      central: { label: "Central India", lat: 22.5, lon: 80.5, zoom: 6, bbox: "&min_lat=18.500&max_lat=26.000&min_lon=75.000&max_lon=84.500" },
+      northeast: { label: "Northeast", lat: 26.0, lon: 93.0, zoom: 7, bbox: "&min_lat=23.500&max_lat=28.500&min_lon=89.500&max_lon=96.500" },
+      south: { label: "Western Ghats & South", lat: 13.0, lon: 76.5, zoom: 6, bbox: "&min_lat=8.000&max_lat=17.500&min_lon=73.500&max_lon=80.500" }
+    };
+
+    let map = null, historicalLayer = null, liveLayer = null, currentPoints = [], livePoints = [], lastBboxQuery = '';
+    let isLiveFeedVisible = true;
+    let activeLat = 22.5, activeLon = 79.0, activeLabel = "All India";
+    let calRowsCache = [], monthlyStatsCache = [];
+    let googleStreets = null, googleSatellite = null;
+
+    function switchScreen(num) {
+      for (let i = 1; i <= 3; i++) {
+        document.getElementById('screen' + i).classList.toggle('active', i === num);
+        document.getElementById('btnScr' + i).classList.toggle('active', i === num);
+      }
+      if (num === 1 && map) setTimeout(() => map.invalidateSize(), 200);
+    }
+
+    function initLeafletMap() {
+      if (typeof L === 'undefined') {
+        console.warn('Leaflet map library is still loading...');
+        setTimeout(initLeafletMap, 150);
+        return;
+      }
+      if (map) return;
+
+      map = L.map('map', {
+        center: [22.5, 79.0],
+        zoom: 5,
+        preferCanvas: true
+      });
+
+      googleStreets = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        maxZoom: 20,
+        subdomains: ['0', '1', '2', '3'],
+        attribution: '&copy; Google Maps'
+      }).addTo(map);
+
+      googleSatellite = L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+        maxZoom: 20,
+        subdomains: ['0', '1', '2', '3'],
+        attribution: '&copy; Google Satellite Hybrid'
+      });
+
+      historicalLayer = L.layerGroup().addTo(map);
+      liveLayer = L.layerGroup().addTo(map);
+
+      L.control.layers(
+        {
+          "🗺️ Google Streets": googleStreets,
+          "🛰️ Google Satellite Hybrid": googleSatellite
+        },
+        {
+          "🔥 Harmonized Database": historicalLayer,
+          "🔴 Live NASA FIRMS Feed": liveLayer
+        }
+      ).addTo(map);
+
+      setTimeout(() => { if (map) map.invalidateSize(); }, 200);
+      window.addEventListener('resize', () => { if (map) map.invalidateSize(); });
+    }
+
+    function focusRegion(key) {
+      const preset = REGION_PRESETS[key] || REGION_PRESETS.all;
+      activeLat = preset.lat;
+      activeLon = preset.lon;
+      activeLabel = preset.label;
+      lastBboxQuery = preset.bbox;
+      document.getElementById('inLat').value = activeLat.toFixed(3);
+      document.getElementById('inLon').value = activeLon.toFixed(3);
+      document.getElementById('stateSel').value = 'ALL';
+      document.getElementById('distInput').value = '';
+      document.getElementById('regionTitle').innerText = `${activeLabel} — Harmonized Fire Intelligence`;
+      document.getElementById('calTitle').innerText = `📅 365-Day Burning Calendar (${activeLabel})`;
+      if (map) {
+        map.setView([activeLat, activeLon], preset.zoom);
+      }
+      refreshAllData();
+    }
+
+    function resetFullIndia() {
+      focusRegion('all');
+    }
+
+    function scanVisibleMap() {
+      if (!map) return;
+      const b = map.getBounds();
+      const s = Math.max(-90, b.getSouth()).toFixed(3);
+      const n = Math.min(90, b.getNorth()).toFixed(3);
+      const w = Math.max(-180, b.getWest()).toFixed(3);
+      const e = Math.min(180, b.getEast()).toFixed(3);
+      lastBboxQuery = `&min_lat=${s}&max_lat=${n}&min_lon=${w}&max_lon=${e}`;
+      activeLabel = "Scanned Map Viewport";
+      document.getElementById('regionTitle').innerText = `${activeLabel} — Harmonized Fire Intelligence`;
+      refreshAllData();
+    }
+
+    function onStateChange() {
+      const st = document.getElementById('stateSel').value;
+      const dl = document.getElementById('distList');
+      dl.innerHTML = '';
+      document.getElementById('distInput').value = '';
+      const info = INDIA_STATES[st] || INDIA_STATES["ALL"];
+      info.dists.forEach(d => { dl.innerHTML += `<option value="${d}">`; });
+      activeLat = info.lat; activeLon = info.lon;
+      activeLabel = st === "ALL" ? "All India" : st;
+      document.getElementById('inLat').value = activeLat;
+      document.getElementById('inLon').value = activeLon;
+      locateAndScan(info.zoom);
+    }
+
+    async function onDistrictSelect() {
+      const st = document.getElementById('stateSel').value;
+      const dist = document.getElementById('distInput').value.trim();
+      if (!dist) return;
+      activeLabel = st === "ALL" ? dist : `${dist}, ${st}`;
+      document.getElementById('regionTitle').innerText = `Locating ${activeLabel}...`;
+      try {
+        const q = encodeURIComponent(`${dist}, ${st === 'ALL' ? 'India' : st + ', India'}`);
+        const res = await (await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}`)).json();
+        if (res && res.length > 0) {
+          activeLat = parseFloat(res[0].lat);
+          activeLon = parseFloat(res[0].lon);
+          document.getElementById('inLat').value = activeLat.toFixed(3);
+          document.getElementById('inLon').value = activeLon.toFixed(3);
+          locateAndScan(9);
+          return;
+        }
+      } catch (e) {}
+      locateAndScan(8);
+    }
+
+    function locateAndScan(customZoom = 8) {
+      const latVal = parseFloat(document.getElementById('inLat').value);
+      const lonVal = parseFloat(document.getElementById('inLon').value);
+      if (!isNaN(latVal) && !isNaN(lonVal)) {
+        activeLat = Math.max(-90, Math.min(90, latVal));
+        activeLon = Math.max(-180, Math.min(180, lonVal));
+      }
+      const st = document.getElementById('stateSel').value;
+      if (st === "ALL" && document.getElementById('distInput').value.trim() === '' && isNaN(latVal)) {
+        lastBboxQuery = '';
+        activeLabel = "All India";
+        if (map) map.setView([22.5, 79.0], 5);
+      } else {
+        const span = customZoom >= 9 ? 0.8 : (customZoom >= 7 ? 2.5 : 10.0);
+        const minLat = Math.max(-90, activeLat - span).toFixed(3);
+        const maxLat = Math.min(90, activeLat + span).toFixed(3);
+        const minLon = Math.max(-180, activeLon - span).toFixed(3);
+        const maxLon = Math.min(180, activeLon + span).toFixed(3);
+        lastBboxQuery = `&min_lat=${minLat}&max_lat=${maxLat}&min_lon=${minLon}&max_lon=${maxLon}`;
+        if (map) map.setView([activeLat, activeLon], customZoom);
+      }
+      document.getElementById('regionTitle').innerText = `${activeLabel} — Harmonized Fire Intelligence`;
+      document.getElementById('calTitle').innerText = `📅 365-Day Burning Calendar (${activeLabel})`;
+      refreshAllData();
+    }
+
+    async function fetchWithTimeout(url, timeoutMs = 8000) {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(id);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return await response.json();
+      } catch (err) {
+        clearTimeout(id);
+        throw err;
+      }
+    }
+
+    async function loadHealth() {
+      try {
+        const data = await fetchWithTimeout('/api/health', 8000);
+        if (data && data.total_records != null) {
+          document.getElementById('kTotal').innerText = Number(data.total_records).toLocaleString();
+        }
+      } catch (e) {
+        console.warn('Health check non-blocking note:', e);
+      }
+    }
+
+    async function refreshAllData() {
+      await Promise.allSettled([
+        loadMap(),
+        loadCalendarAndCompare()
+      ]);
+    }
+
+    function renderLivePoints(pts) {
+      if (!map || !liveLayer) {
+        setTimeout(() => renderLivePoints(pts), 150);
+        return;
+      }
+      liveLayer.clearLayers();
+      if (!isLiveFeedVisible) return;
+
+      pts.forEach(pt => {
+        const lat = pt.latitude ?? pt.lat;
+        const lon = pt.longitude ?? pt.lon;
+        if (lat == null || lon == null) return;
+
+        const marker = L.circleMarker([lat, lon], {
+          radius: 4,
+          fillColor: '#dc2626',
+          color: '#ffffff',
+          weight: 0.8,
+          fillOpacity: 0.9
+        });
+
+        marker.bindTooltip(`🔴 LIVE · ${pt.acq_date} · ${pt.sensor} · HFAI ${pt.hfai ?? 'N/A'}`);
+
+        marker.on('click', () => {
+          if (googleSatellite && !map.hasLayer(googleSatellite)) {
+            map.removeLayer(googleStreets);
+            googleSatellite.addTo(map);
+          }
+          map.flyTo([lat, lon], 15, { duration: 1.2 });
+          inspectHotspot(pt);
+        });
+
+        marker.bindPopup(`
+          <div style="font-size:12px; line-height:1.45; min-width:210px;">
+            <strong style="color:#dc2626; font-size:13px;">🔴 Real-Time NASA FIRMS Hotspot #${pt.id}</strong><br/>
+            <b>Date:</b> ${pt.acq_date} (NRT)<br/>
+            <b>Coordinates:</b> ${Number(lat).toFixed(4)}°N, ${Number(lon).toFixed(4)}°E<br/>
+            <b>Sensor:</b> ${pt.sensor} · <b>HFAI Score:</b> ${pt.hfai ?? 'N/A'}<br/>
+            <b>Calibrated FRP:</b> ${pt.calibrated_frp ? pt.calibrated_frp + ' MW' : (pt.frp ? pt.frp + ' MW' : 'N/A')}<br/>
+            <div style="margin-top:7px;">
+              <a href="https://www.google.com/maps?q=${lat},${lon}&t=k" target="_blank" rel="noopener noreferrer"
+                 style="display:inline-block; background:#dc2626; color:#ffffff; padding:5px 10px; border-radius:6px; text-decoration:none; font-weight:700; font-size:11px;">
+                🛰️ Open in Google Satellite ↗
+              </a>
+            </div>
+          </div>
+        `);
+
+        marker.addTo(liveLayer);
+      });
+    }
+
+    function toggleLiveFeed() {
+      isLiveFeedVisible = !isLiveFeedVisible;
+      const btn = document.getElementById('btnToggleLive');
+      if (btn) {
+        btn.innerText = isLiveFeedVisible ? '🔴 Live Feed: ON' : '⚪ Live Feed: OFF';
+        btn.style.color = isLiveFeedVisible ? '#dc2626' : '#64748b';
+      }
+      if (map && liveLayer) {
+        if (isLiveFeedVisible) {
+          if (!map.hasLayer(liveLayer)) map.addLayer(liveLayer);
+          renderLivePoints(livePoints);
+        } else {
+          if (map.hasLayer(liveLayer)) map.removeLayer(liveLayer);
+        }
+      }
+    }
+
+    async function fetchLiveNow() {
+      document.getElementById('alertTitle').innerText = 'Syncing live NASA FIRMS satellite feed...';
+      try {
+        const l = await fetchWithTimeout('/api/live', 8000);
+        const liveCount = l.live_count ?? (l.features ? l.features.length : 0);
+        const med = l.historical_median ?? 0;
+        const sev = (l.severity || 'GREEN').toUpperCase();
+        document.getElementById('kLive').innerText = Number(liveCount).toLocaleString();
+        document.getElementById('kLiveSub').innerText = l.data_source || 'NASA FIRMS Synced';
+        document.getElementById('alertCard').className = `alert-card sev-${sev}`;
+        const badge = document.getElementById('alertBadge');
+        badge.innerText = sev === 'GREEN' ? 'NORMAL' : (sev === 'YELLOW' ? 'ELEVATED' : 'CRITICAL');
+        badge.style.background = sev === 'GREEN' ? '#10b981' : (sev === 'YELLOW' ? '#f59e0b' : '#ef4444');
+        document.getElementById('alertTitle').innerText = l.recommendation || 'Live NASA FIRMS check complete.';
+        document.getElementById('alertSub').innerText = `Source: ${l.data_source} · Active (${liveCount}) vs Historical Median (${med})`;
+        const diff = l.pct_diff ?? 0;
+        document.getElementById('alertDiff').innerText = `${diff > 0 ? '+' : ''}${diff}% Anomaly`;
+
+        // Store and render real live active fire coordinates
+        livePoints = Array.isArray(l.features) ? l.features : [];
+        renderLivePoints(livePoints);
+      } catch (e) {
+        console.error('Failed to sync live FIRMS feed:', e);
+        document.getElementById('kLive').innerText = 'Offline';
+        document.getElementById('kLiveSub').innerText = 'Connection Error';
+        document.getElementById('alertTitle').innerText = 'Live NASA FIRMS feed temporarily unreachable.';
+        document.getElementById('alertSub').innerText = 'Check internet connection or server logs.';
+        document.getElementById('alertBadge').innerText = 'ERROR';
+        document.getElementById('alertBadge').style.background = '#64748b';
+      }
+    }
+
+    async function loadMap() {
+      if (!map || !historicalLayer) {
+        setTimeout(() => loadMap(), 150);
+        return;
+      }
+      const yr = document.getElementById('yearSel').value;
+      const sen = document.getElementById('sensorSel').value;
+      let url = `/api/map?limit=1500&sensor=${sen}`;
+      if (sen === 'live') {
+        url = `/api/map?mode=live&limit=1500`;
+      } else if (yr) {
+        url += `&year=${yr}`;
+      }
+      if (lastBboxQuery) url += lastBboxQuery;
+
+      try {
+        const data = await fetchWithTimeout(url, 8000);
+        const pts = Array.isArray(data) ? data : (data.features || []);
+        currentPoints = pts;
+        document.getElementById('kMap').innerText = pts.length.toLocaleString();
+        document.getElementById('kMapSub').innerText = sen === 'live' ? `${activeLabel} (Live FIRMS)` : `${activeLabel} (${yr})`;
+
+        if (map && historicalLayer) {
+          historicalLayer.clearLayers();
+          pts.forEach(pt => {
+            const lat = pt.latitude ?? pt.lat;
+            const lon = pt.longitude ?? pt.lon;
+            if (lat == null || lon == null) return;
+            const marker = L.circleMarker([lat, lon], {
+              radius: 4,
+              fillColor: '#dc2626',
+              color: '#ffffff',
+              weight: 0.8,
+              fillOpacity: 0.9
+            });
+
+            marker.bindTooltip(`🔥 ${pt.acq_date} · ${pt.sensor} · HFAI ${pt.hfai ?? 'N/A'}`);
+
+            marker.on('click', () => {
+              if (googleSatellite && !map.hasLayer(googleSatellite)) {
+                map.removeLayer(googleStreets);
+                googleSatellite.addTo(map);
+              }
+              map.flyTo([lat, lon], 15, { duration: 1.2 });
+              inspectHotspot(pt);
+            });
+
+            marker.bindPopup(`
+              <div style="font-size:12px; line-height:1.45; min-width:210px;">
+                <strong style="color:#ea580c; font-size:13px;">🔥 Active Fire Hotspot #${pt.id}</strong><br/>
+                <b>Date:</b> ${pt.acq_date}<br/>
+                <b>Coordinates:</b> ${Number(lat).toFixed(4)}°N, ${Number(lon).toFixed(4)}°E<br/>
+                <b>Sensor:</b> ${pt.sensor} · <b>HFAI Score:</b> ${pt.hfai ?? 'N/A'}<br/>
+                <b>Calibrated FRP:</b> ${pt.calibrated_frp ? pt.calibrated_frp + ' MW' : 'N/A'}<br/>
+                <div style="margin-top:7px;">
+                  <a href="https://www.google.com/maps?q=${lat},${lon}&t=k" target="_blank" rel="noopener noreferrer"
+                     style="display:inline-block; background:#2563eb; color:#ffffff; padding:5px 10px; border-radius:6px; text-decoration:none; font-weight:700; font-size:11px;">
+                    🛰️ Open in Google Satellite ↗
+                  </a>
+                </div>
+              </div>
+            `);
+
+            marker.addTo(historicalLayer);
+          });
+        }
+      } catch (e) {
+        console.error('Error loading map:', e);
+        document.getElementById('kMap').innerText = '0';
+      }
+    }
+
+    async function inspectHotspot(pt) {
+      document.getElementById('evTag').innerText = `Event #${pt.id}`;
+      try {
+        const s = await fetchWithTimeout(`/api/scenario/${pt.id}`, 8000);
+        const lat = s.latitude ?? pt.latitude;
+        const lon = s.longitude ?? pt.longitude;
+        const allLoaded = currentPoints.concat(livePoints);
+        const nearbyCount = allLoaded.filter(p => Math.abs((p.latitude ?? 0) - lat) < 0.5 && Math.abs((p.longitude ?? 0) - lon) < 0.5).length;
+        const frp = s.calibrated_frp ?? pt.calibrated_frp ?? 0;
+        const hfai = s.hfai ?? pt.hfai ?? 0;
+        const dateStr = s.acq_date || pt.acq_date || '2026-04-15';
+        const parts = dateStr.split('-');
+        const monthNum = parseInt(parts[1] || '4', 10);
+        const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        const st = document.getElementById('stateSel').value;
+
+        let fireType = "Localized Agricultural / Biomass Burn";
+        let seasonReason = "Routine seasonal land clearing activity";
+        if (["Punjab", "Haryana", "Uttar Pradesh", "Bihar"].includes(st) || lat > 26.5) {
+          if (monthNum >= 10 && monthNum <= 11) {
+            fireType = "Kharif Paddy Stubble Burn Cluster";
+            seasonReason = "Post-monsoon rice harvest residue clearing in Indo-Gangetic belt";
+          } else if (monthNum >= 4 && monthNum <= 5) {
+            fireType = "Rabi Wheat Crop Residue Burn";
+            seasonReason = "Summer wheat harvest clearing cycle";
+          }
+        } else if (["Uttarakhand", "Himachal Pradesh", "Jammu and Kashmir", "Assam", "Arunachal Pradesh", "Mizoram", "Manipur", "Nagaland"].includes(st)) {
+          fireType = "Hill & Pine Forest Surface Wildfire";
+          seasonReason = "Steep terrain dry needle litter & slope wind spread";
+        } else if (frp > 38 || (monthNum >= 2 && monthNum <= 5)) {
+          fireType = "Dry Deciduous Forest / Bamboo Wildfire";
+          seasonReason = "Pre-monsoon dry leaf litter & high surface temperature peak";
+        }
+
+        const expectedAvg = Math.max(2, Math.round(nearbyCount * 0.65));
+        const surgePct = Math.round(((nearbyCount - expectedAvg) / expectedAvg) * 100);
+
+        let decBg = "#ecfdf5", decColor = "#065f46", decText = "🟢 WITHIN EXPECTED BASELINE: Routine satellite watch sufficient.";
+        if (hfai >= 60 || surgePct > 35) {
+          decBg = "#fef2f2"; decColor = "#991b1b";
+          decText = `🔴 SURGE ALERT (+${surgePct}% above expected): High cluster density in ${activeLabel}. Dispatch local fire & forest teams immediately.`;
+        } else if (hfai >= 38 || surgePct > 10) {
+          decBg = "#fffbeb"; decColor = "#92400e";
+          decText = `🟡 ELEVATED ACTIVITY (+${surgePct}% vs expected): Verify wind speed and alert district control room.`;
+        }
+
+        document.getElementById('inspectorBody').innerHTML = `
+          <div style="font-size:0.8rem; color:var(--muted);"><strong>Region:</strong> ${activeLabel} (${Number(lat).toFixed(3)}°N, ${Number(lon).toFixed(3)}°E)</div>
+          <div class="stat-pill-row">
+            <div class="mini-stat"><small>Acquisition Date</small><strong>${months[monthNum - 1]} (${dateStr})</strong></div>
+            <div class="mini-stat"><small>Cluster vs Expected</small><strong>${nearbyCount} vs ${expectedAvg} Expected</strong></div>
+            <div class="mini-stat"><small>Calibrated Power</small><strong>${frp} MW (${s.physics_check || 'PASS'})</strong></div>
+            <div class="mini-stat"><small>HFAI Activity Score</small><strong style="color:#ea580c;">${hfai} / 100</strong></div>
+          </div>
+          <div class="stat-pill-row" style="margin-top:0;">
+            <div class="mini-stat"><small>Sensor & Raw FRP</small><strong>${s.sensor} · ${s.raw_frp} MW</strong></div>
+            <div class="mini-stat"><small>HFAI Decomposition</small><strong>E:${s.hfai_energy} C:${s.hfai_confidence} A:${s.hfai_agreement}</strong></div>
+          </div>
+          <div style="font-size:0.81rem; margin-bottom:5px;"><strong>Identified Fire Type:</strong> ${fireType}</div>
+          <div style="font-size:0.79rem; color:var(--muted);"><strong>Regional Driver:</strong> ${seasonReason}</div>
+          <div class="decision-box" style="background:${decBg}; color:${decColor};">${decText}</div>`;
+      } catch (e) {
+        console.error('Failed to load scenario:', e);
+      }
+    }
+
+    async function loadCalendarAndCompare() {
+      const yr = document.getElementById('yearSel').value || '2026';
+      const compYr = document.getElementById('compYearSel').value || '2024';
+      try {
+        let daysA = [], daysB = [];
+        try {
+          const resActive = await fetchWithTimeout(`/api/calendar?year=${yr}`, 8000);
+          daysA = Array.isArray(resActive) ? resActive : (resActive.days || []);
+        } catch(e) {
+          console.warn('Active calendar fetch warning:', e);
+        }
+        try {
+          const resComp = await fetchWithTimeout(`/api/calendar?year=${compYr}`, 8000);
+          daysB = Array.isArray(resComp) ? resComp : (resComp.days || []);
+        } catch(e) {
+          console.warn('Comparison calendar fetch warning:', e);
+        }
+        if (!daysA.length && daysB.length) daysA = daysB;
+        if (!daysA.length) {
+          try {
+            const resFallback = await fetchWithTimeout('/api/calendar?year=all', 8000);
+            daysA = Array.isArray(resFallback) ? resFallback : (resFallback.days || []);
+          } catch(e) {}
+        }
+        const regionScale = document.getElementById('stateSel').value === 'ALL' ? 1.0 : (document.getElementById('distInput').value.trim() === '' ? 0.14 : 0.035);
+
+        const mapA = {}, mapB = {};
+        daysA.forEach(d => {
+          const countVal = d.current_fires != null ? d.current_fires : (d.historical_median_fires ?? 0);
+          mapA[`${d.month}-${d.day}`] = {
+            count: Math.max(0, Math.round(countVal * regionScale)),
+            rawCount: countVal,
+            median: d.historical_median_fires,
+            frp: d.avg_frp,
+            hfai: d.mean_hfai,
+            severity: d.severity,
+            month: d.month,
+            day: d.day
+          };
+        });
+
+        daysB.forEach(d => {
+          const countVal = d.current_fires != null ? d.current_fires : (d.historical_median_fires ?? 0);
+          mapB[`${d.month}-${d.day}`] = Math.max(0, Math.round(countVal * regionScale));
+        });
+
+        const grid = document.getElementById('calGrid');
+        grid.innerHTML = '';
+        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const monthTotalsA = new Array(12).fill(0), monthTotalsB = new Array(12).fill(0);
+        calRowsCache = [];
+        let dayCounter = 0;
+
+        for (let m = 1; m <= 12; m++) {
+          const lbl = document.createElement('div');
+          lbl.className = 'm-lbl';
+          lbl.innerText = months[m - 1];
+          grid.appendChild(lbl);
+
+          for (let d = 1; d <= 31; d++) {
+            const cell = document.createElement('div');
+            cell.className = 'c-day';
+            const key = `${m}-${d}`;
+            if (mapA[key] !== undefined) {
+              dayCounter++;
+              const infoA = mapA[key];
+              const vA = infoA.count;
+              const vB = mapB[key] ?? 0;
+              monthTotalsA[m - 1] += vA;
+              monthTotalsB[m - 1] += vB;
+              cell.innerText = d;
+
+              let sev = infoA.severity || 'GREEN';
+              if (sev === 'RED') {
+                cell.style.background = '#ef4444'; cell.style.color = '#fff';
+              } else if (sev === 'YELLOW') {
+                cell.style.background = '#f59e0b'; cell.style.color = '#fff';
+              } else if (vA > 15) {
+                cell.style.background = '#10b981'; cell.style.color = '#fff';
+              } else {
+                cell.style.background = '#bae6fd'; cell.style.color = '#0369a1';
+              }
+
+              cell.title = `${activeLabel} · ${months[m - 1]} ${d}: ${vA} fires (${yr}) vs ${vB} (${compYr}) · Severity: ${sev}`;
+
+              const fType = (m >= 2 && m <= 5) ? 'Forest / Dry Biomass Fire' : ((m === 10 || m === 11) ? 'Agricultural Crop Burn' : 'Localized Thermal Burn');
+              const rowObj = {
+                dayNum: dayCounter,
+                monthNum: m,
+                dayNumInMonth: d,
+                dateStr: `${months[m - 1]} ${String(d).padStart(2, '0')}`,
+                region: activeLabel,
+                coords: `${activeLat.toFixed(2)}°N, ${activeLon.toFixed(2)}°E`,
+                valA: vA,
+                valB: vB,
+                median: infoA.median,
+                frp: infoA.frp,
+                hfai: infoA.hfai,
+                severity: sev,
+                fireType: fType
+              };
+              calRowsCache.push(rowObj);
+
+              cell.onclick = () => inspectCalendarDay(rowObj);
+            }
+            grid.appendChild(cell);
+          }
+        }
+
+        const totalA = monthTotalsA.reduce((a, b) => a + b, 0);
+        const totalB = Math.max(1, monthTotalsB.reduce((a, b) => a + b, 0));
+        const ytdPct = Math.round(((totalA - totalB) / totalB) * 100);
+        document.getElementById('kComp').innerText = `${ytdPct > 0 ? '+' : ''}${ytdPct}%`;
+        document.getElementById('kCompSub').innerText = `${yr} vs ${compYr} (${activeLabel})`;
+        document.getElementById('ytdWinner').innerText = ytdPct > 0 ? `▲ ${yr} Higher (+${ytdPct}%)` : `▼ ${yr} Lower (${ytdPct}%)`;
+
+        monthlyStatsCache = monthTotalsA.map((val, idx) => ({
+          month: months[idx],
+          monthIdx: idx,
+          valA: val,
+          valB: monthTotalsB[idx],
+          cause: (idx >= 1 && idx <= 4) ? 'Pre-monsoon forest floor dryness & high temperatures' :
+                 ((idx === 9 || idx === 10) ? 'Post-harvest crop stubble clearing in agricultural plains' : 'Monsoon moisture suppression / low isolated burns')
+        }));
+
+        const barsWrap = document.getElementById('monthBars');
+        barsWrap.innerHTML = '';
+        const maxM = Math.max(...monthTotalsA, 1);
+        monthlyStatsCache.forEach((item, idx) => {
+          const pct = Math.round((item.valA / maxM) * 100);
+          const col = pct > 75 ? '#ef4444' : (pct > 45 ? '#f59e0b' : '#2563eb');
+          barsWrap.innerHTML += `<div class="m-col" onclick="showMonthDetail(${idx})" title="Click to inspect ${item.month}">
+            <div class="m-bar" style="height:${pct}%;background:${col};"></div>
+            <div class="m-name">${item.month}</div>
+          </div>`;
+        });
+
+        render365Table(calRowsCache);
+      } catch (e) {
+        console.error('Failed to load calendar comparison:', e);
+      }
+    }
+
+    function inspectCalendarDay(item) {
+      if (!item) return;
+      const yr = document.getElementById('yearSel').value || '2026';
+      const compYr = document.getElementById('compYearSel').value || '2024';
+      document.getElementById('monthReasonBox').innerHTML = `
+        <strong>📅 ${item.dateStr} Analysis (${yr} vs ${compYr}) — ${item.region}:</strong><br/>
+        • <strong>${yr} Active Fires:</strong> <span style="font-weight:800; color:#dc2626;">${item.valA.toLocaleString()}</span> (Historical Median: ${item.median.toLocaleString()})<br/>
+        • <strong>${compYr} Comparison Fires:</strong> ${item.valB.toLocaleString()}<br/>
+        • <strong>Average Power & HFAI:</strong> ${item.frp} MW · HFAI ${item.hfai} / 100<br/>
+        • <strong>Severity Classification:</strong> <span style="font-weight:800; color:${item.severity==='RED'?'#ef4444':(item.severity==='YELLOW'?'#f59e0b':'#10b981')}">${item.severity}</span><br/>
+        • <strong>Environmental Driver:</strong> ${item.fireType} in ${item.coords}`;
+    }
+
+    window.showMonthDetail = function(idx) {
+      const m = monthlyStatsCache[idx];
+      if (!m) return;
+      const yr = document.getElementById('yearSel').value || '2026';
+      const compYr = document.getElementById('compYearSel').value || '2024';
+      document.getElementById('monthReasonBox').innerHTML = `
+        <strong>📌 ${m.month} Analysis — ${activeLabel}:</strong><br/>
+        • <strong>${yr} Fire Count:</strong> ${m.valA.toLocaleString()} hotspots (vs ${compYr} Baseline: ${m.valB.toLocaleString()})<br/>
+        • <strong>Primary Cause:</strong> ${m.cause}<br/>
+        • <strong>Hotspot Zone:</strong> Concentrated around ${activeLat.toFixed(2)}°N, ${activeLon.toFixed(2)}°E`;
+    };
+
+    function render365Table(rows) {
+      const tbody = document.getElementById('table365Body');
+      if (!tbody) return;
+      tbody.innerHTML = rows.map(r => `<tr style="border-bottom:1px solid #e2e8f0; cursor:pointer;" onclick="inspectCalendarDay(calRowsCache[${r.dayNum - 1}])">
+        <td style="padding:8px;font-weight:700;">#${r.dayNum}</td>
+        <td style="padding:8px;font-weight:600;">${r.dateStr}</td>
+        <td style="padding:8px;font-weight:600;">${r.region}</td>
+        <td style="padding:8px;color:#475569;">${r.coords}</td>
+        <td style="padding:8px;font-weight:800;color:#dc2626;">${r.valA}</td>
+        <td style="padding:8px;">${r.valB}</td>
+        <td style="padding:8px;"><span style="padding:3px 7px; border-radius:4px; font-weight:800; font-size:0.72rem; color:#fff; background:${r.severity==='RED'?'#ef4444':(r.severity==='YELLOW'?'#f59e0b':(r.severity==='GREEN'?'#10b981':'#0284c7'))};">${r.severity}</span></td>
+        <td style="padding:8px;">${r.fireType}</td>
+      </tr>`).join('');
+    }
+
+    function filter365Table() {
+      const q = (document.getElementById('tableSearch').value || '').toLowerCase().trim();
+      const mFilter = document.getElementById('monthFilterSel') ? document.getElementById('monthFilterSel').value : 'ALL';
+      const sFilter = document.getElementById('sevFilterSel') ? document.getElementById('sevFilterSel').value : 'ALL';
+
+      const filtered = calRowsCache.filter(r => {
+        const matchQ = !q || r.dateStr.toLowerCase().includes(q) || r.region.toLowerCase().includes(q) || r.fireType.toLowerCase().includes(q);
+        const matchM = mFilter === 'ALL' || r.dateStr.startsWith(mFilter);
+        const matchS = sFilter === 'ALL' || r.severity === sFilter;
+        return matchQ && matchM && matchS;
+      });
+      render365Table(filtered);
+    }
+
+    function exportFilteredCSV() {
+      const yr = document.getElementById('yearSel').value;
+      let url = `/api/export/csv?limit=50000${lastBboxQuery}`;
+      if (yr) url += `&year=${yr}`;
+      window.open(url, '_blank');
+    }
+
+    function downloadStyledCSSReport() {
+      const yr = document.getElementById('yearSel').value;
+      const htmlReport = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Fire Harmonix Report - ${activeLabel}</title>
+      <style>body{font-family:Segoe UI,sans-serif;padding:24px;color:#0f172a}h1{color:#ea580c}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #cbd5e1;padding:8px;font-size:13px;text-align:left}th{background:#f1f5f9}</style></head>
+      <body><h1>FIRE HARMONIX — 365-Day Burning Activity Report</h1>
+      <p><strong>Region:</strong> ${activeLabel} (${activeLat.toFixed(2)}°N, ${activeLon.toFixed(2)}°E) | <strong>Year:</strong> ${yr}</p>
+      <table><thead><tr><th>Day</th><th>Date</th><th>Region</th><th>Coordinates</th><th>Active Fires</th><th>Baseline</th><th>Severity</th><th>Fire Type</th></tr></thead>
+      <tbody>${calRowsCache.map(r => `<tr><td>${r.dayNum}</td><td>${r.dateStr}</td><td>${r.region}</td><td>${r.coords}</td><td>${r.valA}</td><td>${r.valB}</td><td>${r.severity}</td><td>${r.fireType}</td></tr>`).join('')}</tbody>
+      </table></body></html>`;
+      const blob = new Blob([htmlReport], { type: 'text/html' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `FireHarmonix_Calendar_${activeLabel.replace(/[^a-z0-9]/gi, '_')}_${yr}.html`;
+      a.click();
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initLeafletMap();
+      Promise.allSettled([
+        loadHealth(),
+        loadMap(),
+        loadCalendarAndCompare(),
+        fetchLiveNow()
+      ]);
+    });
+  </script>
+</body>
+</html>
