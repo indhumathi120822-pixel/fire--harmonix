@@ -8,7 +8,11 @@ from backend import science_engine
 import urllib.request
 if not os.path.exists(DB_PATH):
     os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
-    urllib.request.urlretrieve("https://github.com/indhumathi120822-pixel/fire--harmonix/releases/download/v1.0/fireharmonix.db")
+    print(f"[STARTUP] Downloading database to {DB_PATH}...")
+    urllib.request.urlretrieve(
+        "https://github.com/indhumathi120822-pixel/fire--harmonix/releases/download/v1.0/fireharmonix.db",
+        DB_PATH
+    )
 _CALENDAR_CACHE: Dict[str, List[Dict[str, Any]]] = {}
 
 
@@ -46,7 +50,8 @@ def init_db():
         return
 
     if not os.path.exists(FIRES_DATA_PATH):
-        conn.close()
+        if conn:
+            conn.close()
         raise FileNotFoundError(f"Missing required dataset: {FIRES_DATA_PATH}")
 
     print(f"[STARTUP] Building SQLite database from {FIRES_DATA_PATH}...")
