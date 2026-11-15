@@ -8,7 +8,7 @@ from backend import science_engine
 import urllib.request
 if not os.path.exists(DB_PATH):
     os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
-    urllib.request.urlretrieve("RELEASE_LINK_HERE", DB_PATH)
+    urllib.request.urlretrieve("https://github.com/indhumathi120822-pixel/fire--harmonix/releases/download/v1.0/fireharmonix.db")
 _CALENDAR_CACHE: Dict[str, List[Dict[str, Any]]] = {}
 
 
