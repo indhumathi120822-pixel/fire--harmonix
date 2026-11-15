@@ -23,7 +23,8 @@ def load_table_file(path: str) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
-def init_db() -> None:
+def init_db():
+    conn = None
     if os.path.exists(DB_PATH) and os.path.getsize(DB_PATH) > 1024:
         conn = sqlite3.connect(DB_PATH)
         idx_count = conn.execute("SELECT count(1) FROM sqlite_master WHERE type='index' AND tbl_name='hotspots'").fetchone()[0]
